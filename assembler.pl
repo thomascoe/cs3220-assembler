@@ -7,7 +7,7 @@ use warnings;
 my $DEPTH = 2048;           # Number of addresses (i.e. number of words)
 my $WIDTH = 32;             # Number of bits per word
 # Radixes in BIN, DEC, HEX, OCT, or UNS
-my $ADDRESS_RADIX = "HEX";  
+my $ADDRESS_RADIX = "HEX";
 my $DATA_RADIX = "HEX";
 # Opcodes for different instruction types
 my %OPCODE = (
@@ -20,11 +20,13 @@ my %OPCODE = (
     BRANCH  => "0110",
     JAL     => "1011",
 );
-# Opcodes combined with function codes (these are the 'opcodes' provided in the assembly)
-my %FN_OPCODE = (
+# Instruction definitions (iword is the binary, fmt is the assembly)
+my %INSTR = (
     # ALU-R
-    ADD     => "0000".$OPCODE{ALU_R},
-    SUB     => "0001".$OPCODE{ALU_R},
+    ADD     => {iword => "$OPCODE{ALU_R} 0000 RD RS1 RS2 000000000000",
+                fmt => "RD,RS1,RS2"},
+    SUB     => {iword => "$OPCODE{ALU_R} 0001 RD RS1 RS2 000000000000",
+                fmt => "RD,RS1,RS2"},
     AND     => "0100".$OPCODE{ALU_R},
     OR      => "0101".$OPCODE{ALU_R},
     XOR     => "0110".$OPCODE{ALU_R},
@@ -118,12 +120,20 @@ my %REG_ALIAS = (
     SP  => "R14",
     RA  => "R15",
 );
-my @PSEUDO_INSTRS = qw(BR NOT BLE BGE CALL RET JMP);
+my %PSEUDO_INSTRS = (
+    BR      => {fmt => "imm"},
+    NOT     => {fmt => "RD,RS"},
+    BLE     => {fmt => "RS1,RS2,imm"},
+    BGE     => {fmt => "RS1,RS2,imm"},
+    CALL    => {fmt => "imm(RS1)"},
+    RET     => {fmt => ""},
+    JMP     => {fmt => "imm(RS1)"},
+);
 
 { ## BEGIN main scope block
     # Get command line params. Print usage if undefined
     my ($infile, $outfile) = @ARGV;
-    if ((not defined $infile) or (not defined $outfile)) {
+    if (not defined $infile or not defined $outfile) {
         print "Syntax: $0 infile outfile\n";
         exit;
     }
@@ -141,21 +151,36 @@ sub parse_input
     print "Reading input file $infile...\n";
     open(my $fh, '<', $infile) or die "Couldn't open input file '$infile': $!\n";
 
+    my $cur_word; # Keep track of what word to use for the next instruction
+
+    # Initial pass through, set up labels
+    while (my $line = <$fh>) {
+    }
+
+    # Rewind the file
+    seek ($fh, 0, 0);
+
+    # Second pass through, generate instructions
     while (my $line = <$fh>) {
         chomp $line;
         print "$line\n";
         if ($line =~ /^\./) { # special instruction (.ORIG, .WORD, .NAME)
             # TODO
         }
-        elsif ($line =~ /^[a-zA-Z0-9]+:/) { #label
-            # TODO
+        elsif ($line =~ /^[a-zA-Z0-9]+:/) { # label
+            continue;
+        }
+        elsif ($line =~ /^;/) { # comment
+            continue;
         }
         else { # Regular instruction
             my $instr = parse_instruction($line);
+            # TODO: prepend the current address
         }
     }
 }
 
+# Returns binary string representing the instruction defined on the line
 sub parse_instruction
 {
     my ($line) = @_;
@@ -175,23 +200,10 @@ sub parse_instruction
     print "\n";
 
     # Check if this is a pseudo instruction
-    if (grep(/^$opcode$/, @PSEUDO_INSTRS)) {
-        my $expected_num_tokens;
-        if ($opcode eq 'BR' or $opcode eq 'CALL' or $opcode eq 'JMP') {
-            $expected_num_tokens = 1;
-        }
-        elsif ($opcode eq 'NOT') {
-            $expected_num_tokens = 2;
-        }
-        elsif ($opcode eq 'BLE' or $opcode eq 'BGE') {
-            $expected_num_tokens = 3;
-        }
-        elsif ($opcode eq 'RET') {
-            $expected_num_tokens = 0;
-        }
-
+    if (exists $PSEUDO_INSTRS{$opcode}) {
         # Check valid number of parameters
-        if (scalar @tokens != $expected_num_tokens) {
+        my @fmt = split /,/, $PSEUDO_INSTRS{$opcode}{fmt};
+        if (scalar @tokens != scalar @fmt) {
             print "Invalid number of parameters for '$opcode' on line $.\n";
             return;
         }
@@ -207,7 +219,7 @@ sub parse_instruction
     }
 
     # Check if this is a valid opcode
-    if (!exists $FN_OPCODE{$opcode}) {
+    if (!exists $INSTR{$opcode}) {
         print "Invalid opcode: $opcode\n";
         return;
     }
