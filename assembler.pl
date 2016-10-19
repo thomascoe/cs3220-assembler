@@ -79,6 +79,45 @@ my %FN_OPCODE = (
     BGTZ    => "1111".$OPCODE{BRANCH},
     JAL     => "0000".$OPCODE{JAL},
 );
+my %REG_NUM = (
+    R0  => "0000",
+    R1  => "0001",
+    R2  => "0010",
+    R3  => "0011",
+    R4  => "0100",
+    R5  => "0101",
+    R6  => "0110",
+    R7  => "0111",
+    R8  => "1000",
+    R9  => "1001", # Reserved for assembler
+    R10 => "1010",
+    R11 => "1011",
+    R12 => "1100",
+    R13 => "1101",
+    R14 => "1110",
+    R15 => "1111",
+);
+my %REG_ALIAS = (
+    # Function arguments
+    A0  => "R0",
+    A1  => "R1",
+    A2  => "R2",
+    A3  => "R3",
+    # Return value (R3)
+    RV  => "R3",
+    # Temporaries (R4 and R5)
+    T0  => "R4",
+    T1  => "R5",
+    # Calee-saved values
+    S0  => "R6",
+    S1  => "R7",
+    S2  => "R8",
+    # Pointers
+    GP  => "R12",
+    FP  => "R13",
+    SP  => "R14",
+    RA  => "R15",
+);
 my @PSEUDO_INSTRS = qw(BR NOT BLE BGE CALL RET JMP);
 
 { ## BEGIN main scope block
@@ -101,7 +140,7 @@ sub parse_input
     return if not defined $infile;
     print "Reading input file $infile...\n";
     open(my $fh, '<', $infile) or die "Couldn't open input file '$infile': $!\n";
-    
+
     while (my $line = <$fh>) {
         chomp $line;
         print "$line\n";
@@ -119,14 +158,67 @@ sub parse_input
 
 sub parse_instruction
 {
-    my ($line) = $_;
+    my ($line) = @_;
+    my ($opcode, @tokens) = split / /, $line;
+
+    # Print opcode and tokens for testing
+    print "opcode: $opcode ";
+    foreach my $token (@tokens) {
+        print "token: $token";
+        if (my $bin = reg2bin($token)) {
+            print "/$bin; ";
+        }
+        else {
+            print ";";
+        }
+    }
+    print "\n";
+
+    # Check if this is a pseudo instruction
+    if (grep(/^$opcode$/, @PSEUDO_INSTRS)) {
+        my $expected_num_tokens;
+        if ($opcode eq 'BR' or $opcode eq 'CALL' or $opcode eq 'JMP') {
+            $expected_num_tokens = 1;
+        }
+        elsif ($opcode eq 'NOT') {
+            $expected_num_tokens = 2;
+        }
+        elsif ($opcode eq 'BLE' or $opcode eq 'BGE') {
+            $expected_num_tokens = 3;
+        }
+        elsif ($opcode eq 'RET') {
+            $expected_num_tokens = 0;
+        }
+
+        # Check valid number of parameters
+        if (scalar @tokens != $expected_num_tokens) {
+            print "Invalid number of parameters for '$opcode' on line $.\n";
+            return;
+        }
+
+        # Individual behaviour for each pseudo instruction
+        # TODO: Translate to regular instruction
+        if ($opcode eq 'BR') {
+        }
+        else {
+            print "Pseudo opcode $opcode not implemented!\n";
+            return;
+        }
+    }
+
+    # Check if this is a valid opcode
+    if (!exists $FN_OPCODE{$opcode}) {
+        print "Invalid opcode: $opcode\n";
+        return;
+    }
+
     # TODO
 }
 
 sub build_memory
 {
     my ($outfile) = @_;
-    
+
     # If output file defined, write to it. Otherwise use STDOUT
     my $fh;
     if (defined $outfile) {
@@ -136,7 +228,7 @@ sub build_memory
     else {
         $fh = \*STDOUT;
     }
-    
+
     print $fh <<END_HEADER;
 DEPTH = $DEPTH
 WIDTH = $WIDTH
@@ -149,4 +241,21 @@ BEGIN
 END_HEADER
     # TODO: Print address content
     print $fh "\nEND;\n";
+}
+
+# Convert a register name to binary number
+# Return string with binary value, or undef
+sub reg2bin
+{
+    my ($reg) = @_;
+    if (!defined $reg) {
+        return undef;
+    }
+    if (exists $REG_NUM{$reg}) {
+        return $REG_NUM{$reg};
+    }
+    if (exists $REG_ALIAS{$reg}) {
+        return $REG_NUM{$REG_ALIAS{$reg}};
+    }
+    return undef;
 }
