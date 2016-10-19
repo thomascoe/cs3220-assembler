@@ -70,7 +70,16 @@ my %FN_OPCODE = (
     BEQZ    => "0101".$OPCODE{BRANCH},
     BLTZ    => "0110".$OPCODE{BRANCH},
     BLTEZ   => "0111".$OPCODE{BRANCH},
+    BT      => "1000".$OPCODE{BRANCH},
+    BNE     => "1001".$OPCODE{BRANCH},
+    BGTE    => "1010".$OPCODE{BRANCH},
+    BGT     => "1011".$OPCODE{BRANCH},
+    BNEZ    => "1101".$OPCODE{BRANCH},
+    BGTEZ   => "1110".$OPCODE{BRANCH},
+    BGTZ    => "1111".$OPCODE{BRANCH},
+    JAL     => "0000".$OPCODE{JAL},
 );
+my @PSEUDO_INSTRS = qw(BR NOT BLE BGE CALL RET JMP);
 
 { ## BEGIN main scope block
     # Get command line params. Print usage if undefined
@@ -96,7 +105,22 @@ sub parse_input
     while (my $line = <$fh>) {
         chomp $line;
         print "$line\n";
+        if ($line =~ /^\./) { # special instruction (.ORIG, .WORD, .NAME)
+            # TODO
+        }
+        elsif ($line =~ /^[a-zA-Z0-9]+:/) { #label
+            # TODO
+        }
+        else { # Regular instruction
+            my $instr = parse_instruction($line);
+        }
     }
+}
+
+sub parse_instruction
+{
+    my ($line) = $_;
+    # TODO
 }
 
 sub build_memory
