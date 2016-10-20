@@ -192,6 +192,7 @@ my %data;
     if ($outfile eq "stdout") {
         $outfile = undef;
     }
+    print "\n\n";
     build_memory($outfile);
 } ## END main scope block
 
@@ -249,7 +250,7 @@ sub parse_input
 
     # Rewind the file (close and reopen to reset line numbers)
     close($fh);
-    open(my $fh, '<', $infile) or die "Couldn't open input file '$infile': $!\n";
+    open($fh, '<', $infile) or die "Couldn't open input file '$infile': $!\n";
 
     # Second pass through, generate instructions
     while (my $line = <$fh>) {
@@ -290,9 +291,10 @@ sub parse_input
             next;
         }
         else { # Regular instruction
-            my $value = parse_instruction($line);
-            if (defined $value) {
-                #$data{$cur_word} = $value;
+            my $bin = parse_instruction($line);
+            # TODO: translate binary string
+            if (defined $bin) {
+                $data{$cur_word} = sprintf("%X", oct("0b$bin"));
                 $cur_word++;
             }
         }
@@ -313,7 +315,7 @@ sub parse_instruction
             print "/$bin; ";
         }
         else {
-            print ";";
+            print "; ";
         }
     }
     print "\n";
@@ -324,26 +326,51 @@ sub parse_instruction
         my @fmt = split /,/, $PSEUDO_INSTRS{$opcode}{fmt};
         if (scalar @tokens != scalar @fmt) {
             print "Invalid number of parameters for '$opcode' on line $.\n";
-            return;
+            return undef;
         }
 
         # Individual behaviour for each pseudo instruction
         # TODO: Translate to regular instruction
         if ($opcode eq 'BR') {
+            #TODO
+            return undef;
         }
         else {
             print "Pseudo opcode $opcode not implemented!\n";
-            return;
+            return undef;
         }
     }
 
     # Check if this is a valid opcode
     if (!exists $INSTR{$opcode}) {
         print "Invalid opcode: $opcode\n";
-        return;
+        return undef;
     }
 
-    # TODO
+    my $iword = $INSTR{$opcode}{iword};
+    my @fmt = split /,/, $INSTR{$opcode}{fmt};
+    if (scalar @tokens != scalar @fmt) {
+        print "Invalid number of parameters for '$opcode' on line $.\n";
+        return undef;
+    }
+
+    for (my $i = 0; $i < scalar @tokens; $i++) {
+        my $bin = reg2bin($tokens[$i]);
+        if (!defined $bin) {
+            return undef;
+        }
+        $iword =~ s/$fmt[$i]/$bin/;
+    }
+
+    $iword =~ s/\s+//g;
+
+    if ($iword =~ /^[01]+$/) { # Sanity check
+        print "iword: $iword\n";
+        return $iword;
+    }
+
+    print "iword2: $iword\n";
+    return undef;
 }
 
 sub build_memory
@@ -370,7 +397,6 @@ CONTENT
 BEGIN
 
 END_HEADER
-    # TODO: Print address content
     for my $address (sort(keys %data)) {
         printf("%X : %X\n", $address, $data{$address});
     }
