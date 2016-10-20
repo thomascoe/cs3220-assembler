@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
+use Data::Dumper;
 
 ## globals
 # Size of the memory
@@ -129,6 +130,8 @@ my %PSEUDO_INSTRS = (
     RET     => {fmt => ""},
     JMP     => {fmt => "imm(RS1)"},
 );
+my %label;
+my %data;
 
 { ## BEGIN main scope block
     # Get command line params. Print usage if undefined
@@ -155,27 +158,95 @@ sub parse_input
 
     # Initial pass through, set up labels
     while (my $line = <$fh>) {
+        chomp $line;
+        $line =~ s/^\s+//;
+        if ($line =~ /^;/ or $line =~ /^$/) { # comment or newline
+            next;
+        }
+        elsif ($line =~ /^\./) { # special instruction (.ORIG, .WORD, .NAME)
+            if ($line =~ /^.ORIG/) {
+                my @tokens = split /\s+/, $line;
+                if (!defined $tokens[1]) {
+                    print "Error: no value provided for .ORIG\n";
+                    next;
+                }
+                # Update current address to the number provided (interperated as hex)
+                $cur_word = hex($tokens[1]) / 4;
+            }
+            elsif ($line =~ /^.NAME/) {
+                $line =~ s/^.NAME\s+//;
+                my ($name, $address) = split /\s*=\s*/, $line;
+                if (!defined $name or !defined $address) {
+                    print "Error: invalid .NAME format\n";
+                    next;
+                }
+                # Save the label defined by .NAME
+                $label{$name} = hex($address);
+            }
+            else {
+                next;
+            }
+        }
+        elsif ($line =~ /^([a-zA-Z0-9]+):/) { # label
+            $label{$1} = $cur_word;
+        }
+        else {
+            $cur_word++;
+        }
     }
 
-    # Rewind the file
-    seek ($fh, 0, 0);
+    print "Labels defined:\n";
+    print Dumper(\%label);
+    print "\n";
+
+    # Rewind the file (close and reopen to reset line numbers)
+    close($fh);
+    open(my $fh, '<', $infile) or die "Couldn't open input file '$infile': $!\n";
 
     # Second pass through, generate instructions
     while (my $line = <$fh>) {
         chomp $line;
-        print "$line\n";
-        if ($line =~ /^\./) { # special instruction (.ORIG, .WORD, .NAME)
-            # TODO
+        $line =~ s/^\s+//;
+        if ($line =~ /^;/ or $line =~ /^$/) { # comment or newline
+            next;
+        }
+        elsif ($line =~ /^\./) { # special instruction (.ORIG, .WORD, .NAME)
+            if ($line =~ /^.ORIG/) {
+                my @tokens = split /\s+/, $line;
+                if (!defined $tokens[1]) {
+                    print "Error: no value provided for .ORIG\n";
+                    next;
+                }
+                # Update current address to the number provided (interperated as hex)
+                $cur_word = hex($tokens[1]) / 4;
+            }
+            elsif ($line =~ /^.WORD/) {
+                $line =~ s/^.WORD\s+//;
+                my $value;
+                if ($line =~ /^(0x[0-9A-F]+)/) {
+                    $value = hex($1);
+                }
+                elsif ($line =~ /^([0-9]+)$/) {
+                    $value = $1;
+                }
+                elsif (exists $label{$line}) {
+                    $value = $label{$line}
+                } else {
+                    print "Label '$line' not defined\n";
+                    next;
+                }
+                $data{$cur_word} = $value;
+            }
         }
         elsif ($line =~ /^[a-zA-Z0-9]+:/) { # label
-            continue;
-        }
-        elsif ($line =~ /^;/) { # comment
-            continue;
+            next;
         }
         else { # Regular instruction
-            my $instr = parse_instruction($line);
-            # TODO: prepend the current address
+            my $value = parse_instruction($line);
+            if (defined $value) {
+                #$data{$cur_word} = $value;
+                $cur_word++;
+            }
         }
     }
 }
@@ -184,7 +255,7 @@ sub parse_input
 sub parse_instruction
 {
     my ($line) = @_;
-    my ($opcode, @tokens) = split / /, $line;
+    my ($opcode, @tokens) = split /\s+/, $line;
 
     # Print opcode and tokens for testing
     print "opcode: $opcode ";
@@ -252,6 +323,9 @@ BEGIN
 
 END_HEADER
     # TODO: Print address content
+    for my $address (sort(keys %data)) {
+        printf("%X : %X\n", $address, $data{$address});
+    }
     print $fh "\nEND;\n";
 }
 
