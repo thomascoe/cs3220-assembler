@@ -333,7 +333,56 @@ sub parse_instruction
         # Individual behaviour for each pseudo instruction
         # TODO: Translate to regular instruction
         if ($opcode eq 'BR') {
-            #TODO
+            my $regnum = reg2bin('R6');
+            my $imm = imm2bin($tokens[0]);
+            my $iword = $INSTR{'BEQ'}{iword};
+            $iword =~ s/RS1|RS2/'R6'/;
+            $iword =~ s/imm/$imm/;
+            $iword =~ s/\s+//;
+            return $iword;
+        } elsif ($opcode eq 'NOT') {
+            my $regnum1 = reg2bin($tokens[0]);
+            my $regnum2 = reg2bin($tokens[1]);
+            my $iword = $INSTR{'NAND'}{iword};
+            $iword =~ s/RD/$regnum1/;
+            $iword =~ s/RS1|RS2/$regnum2/;
+            $iword =~ s/\s+//;
+            return $iword;
+        } elsif ($opcode eq 'BLE') {
+            my $regnum1 = reg2bin($tokens[0]);
+            my $regnum2 = reg2bin($tokens[1]);
+            my $imm = imm2bin($tokens[2]);
+            my $regdest = reg2bin('R6');
+            my $iword = $INSTR{'LTE'}{iword};
+            $iword =~ s/RD/$regdest/;
+            $iword =~ s/RS1/$regnum1/;
+            $iword =~ s/RS2/$regnum2/;
+            $iword =~ s/s+//;
+            my $iword2 = $INSTR{'BNEZ'}{iword};
+            $iword2 =~ s/RS1/$regdest/;
+            $iword2 =~ s/imm/$imm/;
+            $iword2 =~ s/s+//;
+            return $iword.'-'.$iword2;
+        } elsif ($opcode eq 'BGE') {
+            my $regnum1 = reg2bin($tokens[0]);
+            my $regnum2 = reg2bin($tokens[1]);
+            my $imm = imm2bin($tokens[2]);
+            my $regdest = reg2bin('R6');
+            my $iword = $INSTR{'GTE'}{iword};
+            $iword =~ s/RD/$regdest/;
+            $iword =~ s/RS1/$regnum1/;
+            $iword =~ s/RS2/$regnum2/;
+            $iword =~ s/s+//;
+            my $iword2 = $INSTR{'BNEZ'}{iword};
+            $iword2 =~ s/RS1/$regdest/;
+            $iword2 =~ s/imm/$imm/;
+            $iword2 =~ s/s+//;
+            return $iword.'-'.$iword2;
+        } elsif ($opcode eq 'CALL') {
+            return undef;
+        } elsif ($opcode eq 'RET') {
+            return undef;
+        } elsif ($opcode eq 'JMP') {
             return undef;
         }
         else {
