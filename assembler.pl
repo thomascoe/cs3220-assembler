@@ -178,9 +178,10 @@ my %PSEUDO_INSTRS = (
     RET     => {fmt => ""},
     JMP     => {fmt => "imm(RS1)"},
 );
-my %label;
-my %name;
-my %data;
+my %label; # Stored as index (word number)
+my %name; # Stored as decimal number
+my %data; # Stored as hex string (lowercase)
+my %comment; # Stored as text
 
 { ## BEGIN main scope block
     # Get command line params. Print usage if undefined
@@ -206,10 +207,10 @@ sub parse_input
 
     my $cur_word; # Keep track of what word to use for the next instruction
 
-    # Initial pass through, set up labels
+    # Initial pass through, set up labels and names
     while (my $line = <$fh>) {
         $line = clean($line);
-        if ($line =~ /^;/ or $line =~ /^$/) { # comment or newline
+        if ($line =~ /^;/ or $line =~ /^$/) { # comment or blank line
             next;
         }
         elsif ($line =~ /^\./) { # special instruction (.ORIG, .WORD, .NAME)
@@ -237,14 +238,12 @@ sub parse_input
                     $name{$name} = $address;
                 }
             }
-            else {
-                next;
-            }
         }
         elsif ($line =~ /^([a-zA-Z0-9]+):/) { # label
             $label{$1} = $cur_word;
         }
         else {
+            # TODO: Take into account BLE, BGE instructions (implemented as 2 separate instructions)
             $cur_word++;
         }
     }
@@ -291,17 +290,23 @@ sub parse_input
                     print "Label '$line' not defined\n";
                     next;
                 }
-                $data{$cur_word} = $value;
+                $data{$cur_word} = sprintf("%x", $value);
             }
         }
         elsif ($line =~ /^[a-zA-Z0-9]+:/) { # label
             next;
         }
         else { # Regular instruction
-            my $bin = parse_instruction($line);
-            # TODO: handle if string represents multiple instructions
+            my $bin = parse_instruction($line, $cur_word);
             if (defined $bin) {
-                $data{$cur_word} = sprintf("%X", oct("0b$bin"));
+                if ($bin =~ /-/) { # Two instructions
+                    # Put first instruction into hash
+                    my ($bin1, $bin2) = split /-/, $bin;
+                    $data{$cur_word} = sprintf("%x", oct("0b$bin1"));
+                    $cur_word++;
+                    $bin = $bin2; # let code below put second inst into hash
+                }
+                $data{$cur_word} = sprintf("%x", oct("0b$bin"));
             }
             $cur_word++;
         }
@@ -311,8 +316,12 @@ sub parse_input
 # Returns binary string representing the instruction defined on the line
 sub parse_instruction
 {
-    my ($line) = @_;
+    my ($line, $cur_word) = @_;
     my ($opcode, @tokens) = split /[\s,\(\)]+/, $line;
+
+    # Build comment
+    $comment{$cur_word} = gen_comment($cur_word, $line);
+    # TODO: Build additional comment for BLE and BGE
 
     # Print opcode and tokens for testing
     print "opcode: $opcode ";
@@ -331,7 +340,6 @@ sub parse_instruction
         }
 
         # Individual behaviour for each pseudo instruction
-        # TODO: Translate to regular instruction
         if ($opcode eq 'BR') {
             my $regnum = reg2bin('R6');
             my $imm = imm2bin($tokens[0]);
@@ -379,10 +387,15 @@ sub parse_instruction
             $iword2 =~ s/\s+//g;
             return $iword.'-'.$iword2;
         } elsif ($opcode eq 'CALL') {
-            my $regnum1 = $tokens[1];
+            my $regnum1 = reg2bin($tokens[1]);
             my $imm = imm2bin($tokens[0]);
             if (!defined $imm) {
-                
+                my $num = name2num($tokens[0]);
+                if (!defined $num) {
+                    print "Name or label '$tokens[0]' on line $. not defined\n";
+                    return undef;
+                }
+                $imm = imm2bin($num);
             }
             my $r = reg2bin('RA');
             my $iword = $INSTR{'JAL'}{iword};
@@ -436,16 +449,11 @@ sub parse_instruction
     for (my $i = 0; $i < scalar @tokens; $i++) {
         my $bin;
         if ($fmt[$i] eq "imm") {
+            # TODO: If this is a branching instr, calc relative offset
             $bin = imm2bin($tokens[$i]);
             if (!defined $bin) { # Not a number, must be name/label
-                my $num;
-                if (exists $label{$tokens[$i]}) { # check if is label
-                    $num = $label{$tokens[$i]};
-                }
-                elsif (exists $name{$tokens[$i]}) { # check if is name
-                    $num = $name{$tokens[$i]};
-                }
-                else {
+                my $num = name2num($tokens[$i]);
+                if (!defined $num) {
                     print "Name or label '$tokens[$i]' on line $. not defined\n";
                     return undef;
                 }
@@ -467,6 +475,7 @@ sub parse_instruction
         }
     }
 
+    # Remove any spaces
     $iword =~ s/\s+//g;
 
     if ($iword =~ /^[01]+$/) { # Sanity check
@@ -491,20 +500,26 @@ sub build_memory
         $fh = \*STDOUT;
     }
 
+    # Print header
     print $fh <<END_HEADER;
-DEPTH = $DEPTH
-WIDTH = $WIDTH
-ADDRESS_RADIX = $ADDRESS_RADIX
-DATA_RADIX = $DATA_RADIX
-
-CONTENT
-BEGIN
-
+WIDTH=$WIDTH;
+DEPTH=$DEPTH;
+ADDRESS_RADIX=$ADDRESS_RADIX;
+DATA_RADIX=$DATA_RADIX;
+CONTENT BEGIN
 END_HEADER
+
+    # TODO: Print ranges for empty addresses
+    # Loop through all defined addresses, printing comment and contents
     for my $address (sort(keys %data)) {
-        printf("%08X : %s\n", $address, $data{$address});
+        if (exists $comment{$address}) {
+            print $fh "$comment{$address}\n";
+        }
+        printf $fh ("%08x : %s;\n", $address, $data{$address});
     }
-    print $fh "\nEND;\n";
+
+    # fin
+    print $fh "END;\n";
 }
 
 # Clean up a line. Remove trailing newlines, swap out all tabs for spaces
@@ -520,11 +535,27 @@ sub clean
     return $line;
 }
 
+# Convert a saved name (or label) to the number saved
+sub name2num
+{
+    my ($x) = @_;
+    if (exists $label{$x}) { # check if is label
+        return $label{$x};
+    }
+    elsif (exists $name{$x}) { # check if is name
+        return $name{$x};
+    }
+    else {
+        return undef;
+    }
+}
+
 # Convert a register name to binary number
 # Return string with binary value, or undef
 sub reg2bin
 {
     my ($reg) = @_;
+    $reg = uc($reg);
     if (!defined $reg) {
         return undef;
     }
@@ -537,18 +568,41 @@ sub reg2bin
     return undef;
 }
 
+# Convert a number to 16-bit binary value
+# Number can be decimal or hex (prepended with 0x)
 sub imm2bin
 {
     my ($imm) = @_;
     if (!defined $imm) {
         return undef;
     }
-    if ($imm =~ /^[0-9]+$/) { # Number in decimal
-        return sprintf("%016b", $imm);
+    if ($imm =~ /^-?[0-9]+$/) { # Number in decimal
+        return unpack 'B16', pack 'n', $imm;
     }
     elsif ($imm =~ /^0x[0-9A-F]+$/) { # Number in hex
         return sprintf("%016b", hex($imm));
-    } else {
+    }
+    else {
         return undef;
     }
+}
+
+# Generates a comment for a line
+# Address is the word number (not byte number)
+sub gen_comment
+{
+    my ($address, $line) = @_;
+    my ($op, @params) = split /[\s,]+/, $line;
+
+    my $com = sprintf "-- @ 0x%08x : $op", $address << 2;
+    for (my $i = 0; $i < scalar @params; $i++) {
+        if ($i == 0) {
+            $com .= " ";
+        }
+        $com .= uc $params[$i];
+        if ($i < scalar @params - 1) {
+            $com .= ",";
+        }
+    }
+    return $com;
 }
