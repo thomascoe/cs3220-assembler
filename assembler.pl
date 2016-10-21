@@ -397,6 +397,7 @@ sub parse_instruction
         return undef;
     }
 
+    # Get the iword and fmt for this opcode, ensure tokens match
     my $iword = $INSTR{$opcode}{iword};
     my @fmt = split /[,\(\)]+/, $INSTR{$opcode}{fmt};
     if (scalar @tokens != scalar @fmt) {
@@ -409,8 +410,22 @@ sub parse_instruction
         my $bin;
         if ($fmt[$i] eq "imm") {
             $bin = imm2bin($tokens[$i]);
-            if (!defined $bin) { # Not a number
-                # TODO: label
+            if (!defined $bin) { # Not a number, must be name/label
+                my $num;
+                if (exists $label{$tokens[$i]}) { # check if is label
+                    $num = $label{$tokens[$i]};
+                }
+                elsif (exists $name{$tokens[$i]}) { # check if is name
+                    $num = $name{$tokens[$i]};
+                }
+                else {
+                    print "Name or label '$tokens[$i]' on line $. not defined\n";
+                    return undef;
+                }
+                if ($opcode eq 'MVHI') {
+                    $num = $num >> 16; # Use upper 16 bits for MVHI
+                }
+                $bin = imm2bin($num);
             }
         }
         else { # We're expecting a register name
@@ -501,7 +516,7 @@ sub imm2bin
     if (!defined $imm) {
         return undef;
     }
-    if ($imm =~ /^[0-9]$/) { # Number in decimal
+    if ($imm =~ /^[0-9]+$/) { # Number in decimal
         return sprintf("%016b", $imm);
     }
     elsif ($imm =~ /^0x[0-9A-F]+$/) { # Number in hex
