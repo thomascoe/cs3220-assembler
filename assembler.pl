@@ -302,8 +302,8 @@ sub parse_input
             # TODO: handle if string represents multiple instructions
             if (defined $bin) {
                 $data{$cur_word} = sprintf("%X", oct("0b$bin"));
-                $cur_word++;
             }
+            $cur_word++;
         }
     }
 }
@@ -355,22 +355,34 @@ sub parse_instruction
         return undef;
     }
 
+    # Loop through each token. Replace that token in the fmt with value
     for (my $i = 0; $i < scalar @tokens; $i++) {
-        my $bin = reg2bin($tokens[$i]);
-        if (!defined $bin) {
-            return undef;
+        my $bin;
+        if ($fmt[$i] eq "imm") {
+            $bin = imm2bin($tokens[$i]);
+            if (!defined $bin) { # Not a number
+                # TODO: label
+            }
         }
-        $iword =~ s/$fmt[$i]/$bin/;
+        else { # We're expecting a register name
+            $bin = reg2bin($tokens[$i]);
+            if (!defined $bin) {
+                print "Register $tokens[$i] not found\n";
+                return undef;
+            }
+        }
+        if (defined $bin) {
+            $iword =~ s/$fmt[$i]/$bin/;
+        }
     }
 
     $iword =~ s/\s+//g;
 
     if ($iword =~ /^[01]+$/) { # Sanity check
-        print "iword: $iword\n";
         return $iword;
     }
 
-    print "iword2: $iword\n";
+    print "invalid iword: $iword\n";
     return undef;
 }
 
@@ -399,11 +411,13 @@ BEGIN
 
 END_HEADER
     for my $address (sort(keys %data)) {
-        printf("%X : %X\n", $address, $data{$address});
+        printf("%08X : %s\n", $address, $data{$address});
     }
     print $fh "\nEND;\n";
 }
 
+# Clean up a line. Remove trailing newlines, swap out all tabs for spaces
+# Remove comments
 sub clean
 {
     my ($line) = @_;
@@ -430,4 +444,20 @@ sub reg2bin
         return $REG_NUM{$REG_ALIAS{$reg}};
     }
     return undef;
+}
+
+sub imm2bin
+{
+    my ($imm) = @_;
+    if (!defined $imm) {
+        return undef;
+    }
+    if ($imm =~ /^[0-9]$/) { # Number in decimal
+        return sprintf("%016b", $imm);
+    }
+    elsif ($imm =~ /^0x[0-9A-F]+$/) { # Number in hex
+        return sprintf("%016b", hex($imm));
+    } else {
+        return undef;
+    }
 }
