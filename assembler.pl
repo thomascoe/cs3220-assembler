@@ -336,17 +336,17 @@ sub parse_instruction
             my $regnum = reg2bin('R6');
             my $imm = imm2bin($tokens[0]);
             my $iword = $INSTR{'BEQ'}{iword};
-            $iword =~ s/RS1|RS2/'R6'/;
-            $iword =~ s/imm/$imm/;
-            $iword =~ s/\s+//;
+            $iword =~ s/RS(1|2)/$regnum/g;
+            $iword =~ s/imm/$imm/g;
+            $iword =~ s/\s+//g;
             return $iword;
         } elsif ($opcode eq 'NOT') {
             my $regnum1 = reg2bin($tokens[0]);
             my $regnum2 = reg2bin($tokens[1]);
             my $iword = $INSTR{'NAND'}{iword};
-            $iword =~ s/RD/$regnum1/;
-            $iword =~ s/RS1|RS2/$regnum2/;
-            $iword =~ s/\s+//;
+            $iword =~ s/RD/$regnum1/g;
+            $iword =~ s/RS(1|2)/$regnum2/g;
+            $iword =~ s/\s+//g;
             return $iword;
         } elsif ($opcode eq 'BLE') {
             my $regnum1 = reg2bin($tokens[0]);
@@ -354,14 +354,14 @@ sub parse_instruction
             my $imm = imm2bin($tokens[2]);
             my $regdest = reg2bin('R6');
             my $iword = $INSTR{'LTE'}{iword};
-            $iword =~ s/RD/$regdest/;
-            $iword =~ s/RS1/$regnum1/;
-            $iword =~ s/RS2/$regnum2/;
+            $iword =~ s/RD/$regdest/g;
+            $iword =~ s/RS1/$regnum1/g;
+            $iword =~ s/RS2/$regnum2/g;
             $iword =~ s/s+//;
             my $iword2 = $INSTR{'BNEZ'}{iword};
-            $iword2 =~ s/RS1/$regdest/;
-            $iword2 =~ s/imm/$imm/;
-            $iword2 =~ s/s+//;
+            $iword2 =~ s/RS1/$regdest/g;
+            $iword2 =~ s/imm/$imm/g;
+            $iword2 =~ s/\s+//g;
             return $iword.'-'.$iword2;
         } elsif ($opcode eq 'BGE') {
             my $regnum1 = reg2bin($tokens[0]);
@@ -369,21 +369,48 @@ sub parse_instruction
             my $imm = imm2bin($tokens[2]);
             my $regdest = reg2bin('R6');
             my $iword = $INSTR{'GTE'}{iword};
-            $iword =~ s/RD/$regdest/;
-            $iword =~ s/RS1/$regnum1/;
-            $iword =~ s/RS2/$regnum2/;
-            $iword =~ s/s+//;
+            $iword =~ s/RD/$regdest/g;
+            $iword =~ s/RS1/$regnum1/g;
+            $iword =~ s/RS2/$regnum2/g;
+            $iword =~ s/\s+//g;
             my $iword2 = $INSTR{'BNEZ'}{iword};
-            $iword2 =~ s/RS1/$regdest/;
-            $iword2 =~ s/imm/$imm/;
-            $iword2 =~ s/s+//;
+            $iword2 =~ s/RS1/$regdest/g;
+            $iword2 =~ s/imm/$imm/g;
+            $iword2 =~ s/\s+//g;
             return $iword.'-'.$iword2;
         } elsif ($opcode eq 'CALL') {
-            return undef;
+            my $regnum1 = $tokens[1];
+            my $imm = imm2bin($tokens[0]);
+            if (!defined $imm) {
+                
+            }
+            my $r = reg2bin('RA');
+            my $iword = $INSTR{'JAL'}{iword};
+            $iword =~ s/RD/$r/g;
+            $iword =~ s/RS1/$regnum1/g;
+            $iword =~ s/imm/$imm/g;
+            $iword =~ s/\s+//g;
+            return $iword;
         } elsif ($opcode eq 'RET') {
-            return undef;
+            my $regnum1 = reg2bin('R9');
+            my $imm = imm2bin(0);
+            my $r = reg2bin('RA');
+            my $iword = $INSTR{'JAL'}{iword};
+            $iword =~ s/RD/$regnum1/g;
+            $iword =~ s/RS1/$r/g;
+            $iword =~ s/imm/$imm/g;
+            $iword =~ s/\s+//g;
+            return $iword;
         } elsif ($opcode eq 'JMP') {
-            return undef;
+            my $regnum1 = $tokens[1];
+            my $imm = imm2bin($tokens[0]);
+            my $r = reg2bin('R9');
+            my $iword = $INSTR{'JAL'}{iword};
+            $iword =~ s/RD/$r/g;
+            $iword =~ s/RS1/$regnum1/g;
+            $iword =~ s/imm/$imm/g;
+            $iword =~ s/\s+//g;
+            return $iword;
         }
         else {
             print "Pseudo opcode $opcode not implemented!\n";
