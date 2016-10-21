@@ -312,25 +312,19 @@ sub parse_input
 sub parse_instruction
 {
     my ($line) = @_;
-    my ($opcode, @tokens) = split /[\s,]+/, $line;
+    my ($opcode, @tokens) = split /[\s,\(\)]+/, $line;
 
     # Print opcode and tokens for testing
     print "opcode: $opcode ";
     foreach my $token (@tokens) {
-        print "token: $token";
-        if (my $bin = reg2bin($token)) {
-            print "/$bin; ";
-        }
-        else {
-            print "; ";
-        }
+        print "token: $token; ";
     }
     print "\n";
 
     # Check if this is a pseudo instruction
     if (exists $PSEUDO_INSTRS{$opcode}) {
         # Check valid number of parameters
-        my @fmt = split /,/, $PSEUDO_INSTRS{$opcode}{fmt};
+        my @fmt = split /[,\(\)]+/, $PSEUDO_INSTRS{$opcode}{fmt};
         if (scalar @tokens != scalar @fmt) {
             print "Invalid number of parameters for '$opcode' on line $.\n";
             return undef;
@@ -355,9 +349,9 @@ sub parse_instruction
     }
 
     my $iword = $INSTR{$opcode}{iword};
-    my @fmt = split /,/, $INSTR{$opcode}{fmt};
+    my @fmt = split /[,\(\)]+/, $INSTR{$opcode}{fmt};
     if (scalar @tokens != scalar @fmt) {
-        print "Invalid number of parameters for '$opcode' on line $.\n";
+        print "Invalid number of parameters for '$opcode' on line $.. Expected ". scalar @fmt . "\n";
         return undef;
     }
 
