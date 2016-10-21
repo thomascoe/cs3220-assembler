@@ -60,9 +60,9 @@ my %INSTR = (
     MVHI    => {iword => "$OPCODE{ALU_I} 1111 RD 0000 imm",
                 fmt => "RD,imm"},
     # Load/Store
-    LW      => {iword => "$OPCODE{LW} 0000 RD  RS1 000000000000",
+    LW      => {iword => "$OPCODE{LW} 0000 RD  RS1 imm",
                 fmt => "RD,imm(RS1)"},
-    SW      => {iword => "$OPCODE{SW} 0000 RS2 RS1 000000000000",
+    SW      => {iword => "$OPCODE{SW} 0000 RS2 RS1 imm",
                 fmt => "RS2,imm(RS1)"},
     # CMP-R
     F       => {iword => "$OPCODE{CMP_R} 0011 RD RS1 RS2 000000000000",
@@ -179,6 +179,7 @@ my %PSEUDO_INSTRS = (
     JMP     => {fmt => "imm(RS1)"},
 );
 my %label;
+my %name;
 my %data;
 
 { ## BEGIN main scope block
@@ -207,8 +208,7 @@ sub parse_input
 
     # Initial pass through, set up labels
     while (my $line = <$fh>) {
-        chomp $line;
-        $line =~ s/^\s+//;
+        $line = clean($line);
         if ($line =~ /^;/ or $line =~ /^$/) { # comment or newline
             next;
         }
@@ -220,7 +220,7 @@ sub parse_input
                     next;
                 }
                 # Update current address to the number provided (interperated as hex)
-                $cur_word = hex($tokens[1]) / 4;
+                $cur_word = hex($tokens[1]) >> 2;
             }
             elsif ($line =~ /^.NAME/) {
                 $line =~ s/^.NAME\s+//;
@@ -229,8 +229,13 @@ sub parse_input
                     print "Error: invalid .NAME format\n";
                     next;
                 }
-                # Save the label defined by .NAME
-                $label{$name} = hex($address);
+                # Save the name defined by .NAME
+                if ($address =~ /^0x/) {
+                    $name{$name} = hex($address);
+                }
+                else {
+                    $name{$name} = $address;
+                }
             }
             else {
                 next;
@@ -244,6 +249,9 @@ sub parse_input
         }
     }
 
+    print "Names defined\n";
+    print Dumper(\%name);
+
     print "Labels defined:\n";
     print Dumper(\%label);
     print "\n";
@@ -254,8 +262,7 @@ sub parse_input
 
     # Second pass through, generate instructions
     while (my $line = <$fh>) {
-        chomp $line;
-        $line =~ s/^\s+//;
+        $line = clean($line);
         if ($line =~ /^;/ or $line =~ /^$/) { # comment or newline
             next;
         }
@@ -267,7 +274,7 @@ sub parse_input
                     next;
                 }
                 # Update current address to the number provided (interperated as hex)
-                $cur_word = hex($tokens[1]) / 4;
+                $cur_word = hex($tokens[1]) >> 2;
             }
             elsif ($line =~ /^.WORD/) {
                 $line =~ s/^.WORD\s+//;
@@ -292,7 +299,7 @@ sub parse_input
         }
         else { # Regular instruction
             my $bin = parse_instruction($line);
-            # TODO: translate binary string
+            # TODO: handle if string represents multiple instructions
             if (defined $bin) {
                 $data{$cur_word} = sprintf("%X", oct("0b$bin"));
                 $cur_word++;
@@ -305,7 +312,7 @@ sub parse_input
 sub parse_instruction
 {
     my ($line) = @_;
-    my ($opcode, @tokens) = split /\s+/, $line;
+    my ($opcode, @tokens) = split /[\s,]+/, $line;
 
     # Print opcode and tokens for testing
     print "opcode: $opcode ";
@@ -343,7 +350,7 @@ sub parse_instruction
 
     # Check if this is a valid opcode
     if (!exists $INSTR{$opcode}) {
-        print "Invalid opcode: $opcode\n";
+        print "Invalid opcode on line $.: $opcode\n";
         return undef;
     }
 
@@ -401,6 +408,17 @@ END_HEADER
         printf("%X : %X\n", $address, $data{$address});
     }
     print $fh "\nEND;\n";
+}
+
+sub clean
+{
+    my ($line) = @_;
+    chomp $line;            # Remove trailing \n
+    $line =~ s/^[\s\t]+//;  # Remove leading spaces and tabs
+    $line =~ s/[\r\n]+$//;  # Remove trailing \r\n (windows newline)
+    $line =~ s/;.*$//;      # Remove traling comment
+    $line =~ s/\t/ /g;     # Change all tabs to spaces
+    return $line;
 }
 
 # Convert a register name to binary number
