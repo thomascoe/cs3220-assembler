@@ -514,8 +514,7 @@ END_HEADER
 
     # TODO: Print ranges for empty addresses
     # Loop through all defined addresses, printing comment and contents
-    # TODO: This doesn't seem to be sorting right?
-    for my $address (sort(keys %data)) {
+    for my $address (sort {$a <=> $b} (keys %data)) {
         if (exists $comment{$address}) {
             print $fh "$comment{$address}\n";
         }
