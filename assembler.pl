@@ -190,12 +190,12 @@ my %comment; # Stored as text
         print "Syntax: $0 infile outfile\n";
         exit;
     }
-    parse_input($infile);
     if ($outfile eq "stdout") {
         $outfile = undef;
     }
-    print "\n\n";
+    parse_input($infile);
     build_memory($outfile);
+    exit;
 } ## END main scope block
 
 sub parse_input
@@ -314,21 +314,23 @@ sub parse_input
 }
 
 # Returns binary string representing the instruction defined on the line
+# Global side effects: adds comment for this line to %comment
 sub parse_instruction
 {
     my ($line, $cur_word) = @_;
     my ($opcode, @tokens) = split /[\s,\(\)]+/, $line;
+    $opcode = uc($opcode);
 
     # Build comment
     $comment{$cur_word} = gen_comment($cur_word, $line);
     # TODO: Build additional comment for BLE and BGE
 
     # Print opcode and tokens for testing
-    print "opcode: $opcode ";
-    foreach my $token (@tokens) {
-        print "token: $token; ";
-    }
-    print "\n";
+    #print "opcode: $opcode ";
+    #foreach my $token (@tokens) {
+        #print "token: $token; ";
+    #}
+    #print "\n";
 
     # Check if this is a pseudo instruction
     if (exists $PSEUDO_INSTRS{$opcode}) {
@@ -449,7 +451,6 @@ sub parse_instruction
     for (my $i = 0; $i < scalar @tokens; $i++) {
         my $bin;
         if ($fmt[$i] eq "imm") {
-            # TODO: If this is a branching instr, calc relative offset
             $bin = imm2bin($tokens[$i]);
             if (!defined $bin) { # Not a number, must be name/label
                 my $num = name2num($tokens[$i]);
@@ -459,6 +460,8 @@ sub parse_instruction
                 }
                 if ($opcode eq 'MVHI') {
                     $num = $num >> 16; # Use upper 16 bits for MVHI
+                } elsif ($opcode =~ /^B/) { # Branching instruction
+                    $num -= ($cur_word + 1); # Offset by current address (plus 1 -> PC already incremented)
                 }
                 $bin = imm2bin($num);
             }
@@ -511,6 +514,7 @@ END_HEADER
 
     # TODO: Print ranges for empty addresses
     # Loop through all defined addresses, printing comment and contents
+    # TODO: This doesn't seem to be sorting right?
     for my $address (sort(keys %data)) {
         if (exists $comment{$address}) {
             print $fh "$comment{$address}\n";
@@ -592,9 +596,10 @@ sub imm2bin
 sub gen_comment
 {
     my ($address, $line) = @_;
-    my ($op, @params) = split /[\s,]+/, $line;
+    my ($opcode, @params) = split /[\s,]+/, $line;
+    $opcode = uc($opcode);
 
-    my $com = sprintf "-- @ 0x%08x : $op", $address << 2;
+    my $com = sprintf "-- @ 0x%08x : $opcode", $address << 2;
     for (my $i = 0; $i < scalar @params; $i++) {
         if ($i == 0) {
             $com .= " ";
