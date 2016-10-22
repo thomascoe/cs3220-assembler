@@ -248,12 +248,12 @@ sub parse_input
         }
     }
 
-    print "Names defined\n";
-    print Dumper(\%name);
+    #print "Names defined\n";
+    #print Dumper(\%name);
 
-    print "Labels defined:\n";
-    print Dumper(\%label);
-    print "\n";
+    #print "Labels defined:\n";
+    #print Dumper(\%label);
+    #print "\n";
 
     # Rewind the file (close and reopen to reset line numbers)
     close($fh);
@@ -513,23 +513,21 @@ CONTENT BEGIN
 END_HEADER
 
     my $i = 0x0;
-    # TODO: Print ranges for empty addresses
     # Loop through all defined addresses, printing comment and contents
     for my $address (sort {$a <=> $b} (keys %data)) {
-        #checks for and prints DEAD lines (range or single)
+        # Checks for and prints DEAD lines (range or single)
         if ($address > $i) {
-            if ($i+1 eq $address){
+            if ($address == $i+1){
                 printf $fh ("%08x : DEAD;\n",$i);
-                $i = $address+1;
             } else {
                 printf $fh ("[%08x..%08x] : DEAD;\n",$i, $address-1);
-                $i = $address+1;
             }
         }
+        # If there is a comment for this address, print it first
         if (exists $comment{$address}) {
-                print $fh "$comment{$address}\n";
+            print $fh "$comment{$address}\n";
         }
-
+        # Print address and hex data
         printf $fh ("%08x : %s;\n", $address, $data{$address});
         $i = $address+1;
     }
