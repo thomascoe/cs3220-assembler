@@ -512,15 +512,31 @@ DATA_RADIX=$DATA_RADIX;
 CONTENT BEGIN
 END_HEADER
 
+    my $i = 0x0;
     # TODO: Print ranges for empty addresses
     # Loop through all defined addresses, printing comment and contents
     for my $address (sort {$a <=> $b} (keys %data)) {
-        if (exists $comment{$address}) {
-            print $fh "$comment{$address}\n";
+        #checks for and prints DEAD lines (range or single)
+        if ($address > $i) {
+            if ($i+1 eq $address){
+                printf $fh ("%08x : DEAD;\n",$i);
+                $i = $address+1;
+            } else {
+                printf $fh ("[%08x..%08x] : DEAD;\n",$i, $address-1);
+                $i = $address+1;
+            }
         }
-        printf $fh ("%08x : %s;\n", $address, $data{$address});
-    }
+        if (exists $comment{$address}) {
+                print $fh "$comment{$address}\n";
+        }
 
+        printf $fh ("%08x : %s;\n", $address, $data{$address});
+        $i = $address+1;
+    }
+    #final deads if needed
+    if ($i < 0x7ff) {
+        printf $fh ("[%08x..%08x] : DEAD;\n",$i, 0x7ff);
+    }
     # fin
     print $fh "END;\n";
 }
