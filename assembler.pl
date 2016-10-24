@@ -249,9 +249,14 @@ sub parse_input
         elsif ($line =~ /^([a-zA-Z0-9]+):/) { # label
             $label{$1} = $cur_word;
         }
-        else {
-            # TODO: Take into account BLE, BGE instructions (implemented as 2 separate instructions)
-            $cur_word++;
+        else { # Regular instruction
+            my ($opcode, @tokens) = split /[\s,\(\)]+/, $line;
+            if (exists $PSEUDO_INSTRS{$opcode}) {
+                my @itexts = @{$PSEUDO_INSTRS{$opcode}{itext}};
+                $cur_word += scalar @itexts; # increment by number of new instructions
+            } else {
+                $cur_word++;
+            }
         }
     }
 
