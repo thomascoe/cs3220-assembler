@@ -130,6 +130,22 @@ my %INSTR = (
     JAL     => {iword => "$OPCODE{JAL} 0000 RD  RS1 imm",
                 fmt => "RD,imm(RS1)"}
 );
+my %PSEUDO_INSTRS = (
+    BR      => {fmt => "imm",
+                itext => ["BEQ R6,R6,imm"]},
+    NOT     => {fmt => "RD,RS",
+                itext => ["NAND RD,RS,RS"]},
+    BLE     => {fmt => "RS1,RS2,imm",
+                itext => ["LTE R6,RS1,RS2", "BNEZ R6,imm"]},
+    BGE     => {fmt => "RS1,RS2,imm",
+                itext => ["GTE R6,RS1,RS2", "BNEZ R6,imm"]},
+    CALL    => {fmt => "imm(RS1)",
+                itext => ["JAL RA,imm(RS1)"]},
+    RET     => {fmt => "",
+                itext => ["JAL R9,0(RA)"]},
+    JMP     => {fmt => "imm(RS1)",
+                itext => ["JAL R9,imm(RS1)"]},
+);
 my %REG_NUM = (
     R0  => "0000",
     R1  => "0001",
@@ -168,15 +184,6 @@ my %REG_ALIAS = (
     FP  => "R13",
     SP  => "R14",
     RA  => "R15",
-);
-my %PSEUDO_INSTRS = (
-    BR      => {fmt => "imm"},
-    NOT     => {fmt => "RD,RS"},
-    BLE     => {fmt => "RS1,RS2,imm"},
-    BGE     => {fmt => "RS1,RS2,imm"},
-    CALL    => {fmt => "imm(RS1)"},
-    RET     => {fmt => ""},
-    JMP     => {fmt => "imm(RS1)"},
 );
 my %label; # Stored as index (word number)
 my %name; # Stored as decimal number
@@ -297,18 +304,7 @@ sub parse_input
             next;
         }
         else { # Regular instruction
-            my $bin = parse_instruction($line, $cur_word);
-            if (defined $bin) {
-                if ($bin =~ /-/) { # Two instructions
-                    # Put first instruction into hash
-                    my ($bin1, $bin2) = split /-/, $bin;
-                    $data{$cur_word} = sprintf("%x", oct("0b$bin1"));
-                    $cur_word++;
-                    $bin = $bin2; # let code below put second inst into hash
-                }
-                $data{$cur_word} = sprintf("%x", oct("0b$bin"));
-            }
-            $cur_word++;
+            my $bin = parse_instruction($line, \$cur_word);
         }
     }
 }
@@ -321,17 +317,6 @@ sub parse_instruction
     my ($opcode, @tokens) = split /[\s,\(\)]+/, $line;
     $opcode = uc($opcode);
 
-    # Build comment
-    $comment{$cur_word} = gen_comment($cur_word, $line);
-    # TODO: Build additional comment for BLE and BGE
-
-    # Print opcode and tokens for testing
-    #print "opcode: $opcode ";
-    #foreach my $token (@tokens) {
-        #print "token: $token; ";
-    #}
-    #print "\n";
-
     # Check if this is a pseudo instruction
     if (exists $PSEUDO_INSTRS{$opcode}) {
         # Check valid number of parameters
@@ -340,97 +325,17 @@ sub parse_instruction
             print "Invalid number of parameters for '$opcode' on line $.\n";
             return undef;
         }
-
-        # Individual behaviour for each pseudo instruction
-        if ($opcode eq 'BR') {
-            my $regnum = reg2bin('R6');
-            my $imm = imm2bin($tokens[0]);
-            my $iword = $INSTR{'BEQ'}{iword};
-            $iword =~ s/RS(1|2)/$regnum/g;
-            $iword =~ s/imm/$imm/g;
-            $iword =~ s/\s+//g;
-            return $iword;
-        } elsif ($opcode eq 'NOT') {
-            my $regnum1 = reg2bin($tokens[0]);
-            my $regnum2 = reg2bin($tokens[1]);
-            my $iword = $INSTR{'NAND'}{iword};
-            $iword =~ s/RD/$regnum1/g;
-            $iword =~ s/RS(1|2)/$regnum2/g;
-            $iword =~ s/\s+//g;
-            return $iword;
-        } elsif ($opcode eq 'BLE') {
-            my $regnum1 = reg2bin($tokens[0]);
-            my $regnum2 = reg2bin($tokens[1]);
-            my $imm = imm2bin($tokens[2]);
-            my $regdest = reg2bin('R6');
-            my $iword = $INSTR{'LTE'}{iword};
-            $iword =~ s/RD/$regdest/g;
-            $iword =~ s/RS1/$regnum1/g;
-            $iword =~ s/RS2/$regnum2/g;
-            $iword =~ s/s+//;
-            my $iword2 = $INSTR{'BNEZ'}{iword};
-            $iword2 =~ s/RS1/$regdest/g;
-            $iword2 =~ s/imm/$imm/g;
-            $iword2 =~ s/\s+//g;
-            return $iword.'-'.$iword2;
-        } elsif ($opcode eq 'BGE') {
-            my $regnum1 = reg2bin($tokens[0]);
-            my $regnum2 = reg2bin($tokens[1]);
-            my $imm = imm2bin($tokens[2]);
-            my $regdest = reg2bin('R6');
-            my $iword = $INSTR{'GTE'}{iword};
-            $iword =~ s/RD/$regdest/g;
-            $iword =~ s/RS1/$regnum1/g;
-            $iword =~ s/RS2/$regnum2/g;
-            $iword =~ s/\s+//g;
-            my $iword2 = $INSTR{'BNEZ'}{iword};
-            $iword2 =~ s/RS1/$regdest/g;
-            $iword2 =~ s/imm/$imm/g;
-            $iword2 =~ s/\s+//g;
-            return $iword.'-'.$iword2;
-        } elsif ($opcode eq 'CALL') {
-            my $regnum1 = reg2bin($tokens[1]);
-            my $imm = imm2bin($tokens[0]);
-            if (!defined $imm) {
-                my $num = name2num($tokens[0]);
-                if (!defined $num) {
-                    print "Name or label '$tokens[0]' on line $. not defined\n";
-                    return undef;
-                }
-                $imm = imm2bin($num);
+        # Get list of real instructions this pseudo-instr translates to
+        my @itexts = @{$PSEUDO_INSTRS{$opcode}{itext}};
+        foreach my $itext (@itexts) { # For each new instruction
+            for (my $i = 0; $i < scalar @fmt; $i++) {
+                $itext =~ s/$fmt[$i]/$tokens[$i]/g; # swap placeholder for value
             }
-            my $r = reg2bin('RA');
-            my $iword = $INSTR{'JAL'}{iword};
-            $iword =~ s/RD/$r/g;
-            $iword =~ s/RS1/$regnum1/g;
-            $iword =~ s/imm/$imm/g;
-            $iword =~ s/\s+//g;
-            return $iword;
-        } elsif ($opcode eq 'RET') {
-            my $regnum1 = reg2bin('R9');
-            my $imm = imm2bin(0);
-            my $r = reg2bin('RA');
-            my $iword = $INSTR{'JAL'}{iword};
-            $iword =~ s/RD/$regnum1/g;
-            $iword =~ s/RS1/$r/g;
-            $iword =~ s/imm/$imm/g;
-            $iword =~ s/\s+//g;
-            return $iword;
-        } elsif ($opcode eq 'JMP') {
-            my $regnum1 = $tokens[1];
-            my $imm = imm2bin($tokens[0]);
-            my $r = reg2bin('R9');
-            my $iword = $INSTR{'JAL'}{iword};
-            $iword =~ s/RD/$r/g;
-            $iword =~ s/RS1/$regnum1/g;
-            $iword =~ s/imm/$imm/g;
-            $iword =~ s/\s+//g;
-            return $iword;
+            # Generate the comment for this line and recursively parse new instr
+            $comment{$$cur_word} = gen_comment($$cur_word, $line);
+            parse_instruction($itext, $cur_word);
         }
-        else {
-            print "Pseudo opcode $opcode not implemented!\n";
-            return undef;
-        }
+        return "SUCCESS";
     }
 
     # Check if this is a valid opcode
@@ -448,7 +353,7 @@ sub parse_instruction
     }
 
     # Loop through each token. Replace that token in the fmt with value
-    for (my $i = 0; $i < scalar @tokens; $i++) {
+    for (my $i = 0; $i < scalar @fmt; $i++) {
         my $bin;
         if ($fmt[$i] eq "imm") {
             $bin = imm2bin($tokens[$i]);
@@ -461,7 +366,7 @@ sub parse_instruction
                 if ($opcode eq 'MVHI') {
                     $num = $num >> 16; # Use upper 16 bits for MVHI
                 } elsif ($opcode =~ /^B/) { # Branching instruction
-                    $num -= ($cur_word + 1); # Offset by current address (plus 1 -> PC already incremented)
+                    $num -= ($$cur_word + 1); # Offset by current address (plus 1 -> PC already incremented)
                 }
                 $bin = imm2bin($num);
             }
@@ -474,7 +379,7 @@ sub parse_instruction
             }
         }
         if (defined $bin) {
-            $iword =~ s/$fmt[$i]/$bin/;
+            $iword =~ s/$fmt[$i]/$bin/; # Put actual value in place of fmt
         }
     }
 
@@ -482,7 +387,13 @@ sub parse_instruction
     $iword =~ s/\s+//g;
 
     if ($iword =~ /^[01]+$/) { # Sanity check
-        return $iword;
+        # Build comment
+        if (!exists $comment{$$cur_word}) { # Don't overwrite if this is a recursive call (for pseudo)
+            $comment{$$cur_word} = gen_comment($$cur_word, $line);
+        }
+        $data{$$cur_word} = sprintf("%x", oct("0b$iword"));
+        $$cur_word++;
+        return "SUCCESS";
     }
 
     print "invalid iword: $iword\n";
