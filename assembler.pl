@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use Data::Dumper;
 
 ## globals
 # Size of the memory
@@ -259,13 +258,6 @@ sub parse_input
             }
         }
     }
-
-    #print "Names defined\n";
-    #print Dumper(\%name);
-
-    #print "Labels defined:\n";
-    #print Dumper(\%label);
-    #print "\n";
 
     # Rewind the file (close and reopen to reset line numbers)
     close($fh);
